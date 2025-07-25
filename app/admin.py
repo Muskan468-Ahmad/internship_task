@@ -6,10 +6,9 @@ from app.crud import (
     get_pending_interactions,
     mark_interaction_answered,
     get_interaction_by_id,
-    add_qa_pair,
-    get_all_qas
+    add_qa_pair
 )
-from app.retrieval import SimpleRetriever
+from app.main import refresh_retriever
 
 admin_bp = Blueprint("admin", __name__)
 

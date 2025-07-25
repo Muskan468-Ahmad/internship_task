@@ -1,20 +1,32 @@
-from typing import Optional, Tuple
-from rapidfuzz import fuzz, process
+from typing import List
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from app.config import settings
 
-class SimpleRetriever:
-    def __init__(self, qa_list):
-        self.refresh(qa_list)
+class VectorRetriever:
+    """
+    Wraps a FAISS vector store. No GPU required.
+    """
+    def __init__(self, qas):
+        self.emb = OpenAIEmbeddings(api_key=settings.OPENAI_API_KEY,
+                                    model=settings.EMBEDDING_MODEL)
+        self.build(qas)
 
-    def refresh(self, qa_list):
-        """Refresh in-memory index after new QAs are added."""
-        self.qa_list = qa_list or []
-        self.questions = [q.question for q in self.qa_list]
+    def build(self, qas):
+        texts = [f"Q: {q.question}\nA: {q.answer}" for q in qas]
+        metadatas = [{"id": str(q.id), "question": q.question, "answer": q.answer} for q in qas]
+        if texts:
+            self.vs = FAISS.from_texts(texts=texts, embedding=self.emb, metadatas=metadatas)
+        else:
+            # empty store
+            self.vs = None
 
-    def best_match(self, query: str) -> Tuple[Optional[object], float]:
-        if not self.qa_list:
-            return None, 0.0
-        match = process.extractOne(query, self.questions, scorer=fuzz.token_set_ratio)
-        if not match:
-            return None, 0.0
-        _, score, idx = match
-        return self.qa_list[idx], score / 100.0
+    def refresh(self, qas):
+        self.build(qas)
+
+    def top_k(self, query: str, k: int = 5) -> List[dict]:
+        if not self.vs:
+            return []
+        docs = self.vs.similarity_search(query, k=k)
+        return [{"text": d.page_content, **(d.metadata or {})} for d in docs]
+
